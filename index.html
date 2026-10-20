@@ -1,0 +1,213 @@
+﻿<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ПромТур Гродно — промышленный туризм для школьников</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f5f7fa; color: #1a2332; }
+  header { background: #0f3d5c; color: #fff; padding: 14px 24px; display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  header h1 { font-size: 1.25rem; font-weight: 600; }
+  header .sub { font-size: .8rem; opacity: .8; }
+  .layout { display: flex; height: calc(100vh - 64px); }
+  #map { flex: 1; min-width: 0; }
+  aside { width: 380px; background: #fff; border-left: 1px solid #dde3ea; display: flex; flex-direction: column; }
+  .filters { padding: 12px 16px; border-bottom: 1px solid #e6ebf1; display: flex; gap: 8px; flex-wrap: wrap; }
+  .filters button { border: 1px solid #c9d4e0; background: #fff; border-radius: 999px; padding: 5px 12px; font-size: .8rem; cursor: pointer; }
+  .filters button.active { background: #0f3d5c; color: #fff; border-color: #0f3d5c; }
+  #list { overflow-y: auto; flex: 1; padding: 8px 12px; }
+  .card { border: 1px solid #e2e8f0; border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: pointer; transition: box-shadow .15s; }
+  .card:hover { box-shadow: 0 2px 10px rgba(15,61,92,.12); }
+  .card h3 { font-size: .95rem; margin-bottom: 4px; color: #0f3d5c; }
+  .card .city { font-size: .75rem; color: #64748b; margin-bottom: 6px; }
+  .card .desc { font-size: .8rem; line-height: 1.4; color: #334155; }
+  .card .contacts { font-size: .75rem; color: #475569; margin-top: 6px; }
+  .leaflet-popup-content { font-size: .85rem; line-height: 1.45; }
+  .leaflet-popup-content h4 { color: #0f3d5c; margin-bottom: 4px; }
+  @media (max-width: 820px) {
+    .layout { flex-direction: column; height: auto; }
+    #map { height: 55vh; }
+    aside { width: 100%; height: auto; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>ПромТур Гродно</h1>
+    <div class="sub">Интерактивная карта промышленного туризма для школьников</div>
+  </div>
+</header>
+
+<div class="layout">
+  <div id="map"></div>
+  <aside>
+    <div class="filters" id="filters">
+      <button class="active" data-filter="all">Все</button>
+      <button data-filter="Пищевое">Пищевое</button>
+      <button data-filter="Химия">Химия</button>
+      <button data-filter="Энергетика">Энергетика</button>
+      <button data-filter="Текстиль">Текстиль</button>
+      <button data-filter="Ремёсла">Ремёсла</button>
+      <button data-filter="Связь">Связь</button>
+      <button data-filter="Строительство">Строительство</button>
+      <button data-filter="Медицина">Медицина</button>
+      <button data-filter="Стекольное производство">Стекольное производство</button>
+    </div>
+    <div id="list"></div>
+  </aside>
+</div><script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+// ===== ДАННЫЕ: ТОЛЬКО ГРОДНО И БЛИЖАЙШИЕ ОКРЕСТНОСТИ =====
+const places = [
+  {
+    name: "ОАО «Молочный мир»",
+    city: "Гродно",
+    type: "Пищевое",
+    coords: [53.66, 23.82],
+    desc: "Автоматизированное производство сыра, энергоэффективные технологии (энергоцентр, газопоршневые агрегаты).",
+    contacts: "excursion@milk.by",
+    terms: "С 13 лет, до 20 чел., запись за 5 рабочих дней, вт/чт. При себе — паспорт, список детей с пометкой о здоровье."
+  },
+  {
+    name: "ОАО «Гронитекс»",
+    city: "Гродно",
+    type: "Текстиль",
+    coords: [53.68, 23.83],
+    desc: "Музейная комната истории нити и прядения, производственные цеха.",
+    contacts: "(152) 79-93-27; info@gronitex.by (Яковенко М. С.)",
+    terms: "Будние дни 8:30–17:00, организованные группы."
+  },
+  {
+    name: "Филиал «Завод Химволокно» ОАО «Гродно Азот»",
+    city: "Гродно",
+    type: "Химия",
+    coords: [53.65, 23.85],
+    desc: "Профориентационные экскурсии: превращение сырья в высокотехнологичные волокна и ткани.",
+    contacts: "Запрос через grodno-azot.by (инженер по подготовке кадров М. Ковалевская)",
+    terms: "Организованные группы школьников."
+  },
+  {
+    name: "Филиал «ПСДТУ» РУП «Гродноэнерго»",
+    city: "Гродно",
+    type: "Энергетика",
+    coords: [53.67, 23.84],
+    desc: "Центр цифровизации, оборудование для автоматизации, автомат поверхностного монтажа (SMD).",
+    contacts: "+375 29 7842368 (Белявский В. Д.)",
+    terms: "По договорённости."
+  },
+  {
+    name: "Центр ремёсел «Наследие»",
+    city: "Гродно",
+    type: "Ремёсла",
+    coords: [53.69, 23.83],
+    desc: "Экскурсии и мастер-классы по традиционным ремёслам: ткачество, соломоплетение, валяние.",
+    contacts: "8 (0152) 68-38-21; ул. Реймонта, 12",
+    terms: "Для младших и средних классов."
+  },
+  {
+    name: "СПК «Прогресс-Вертелишки»",
+    city: "Гродненский район",
+    type: "Пищевое",
+    coords: [53.72, 23.95],
+    desc: "Роботизированная дойка коров, гончарный цех с мастер-классом, кузница.",
+    contacts: "Через управление образования (сотрудничество со школами)",
+    terms: "Выезд за город, организованные группы."
+  },
+  {
+    name: "Гродненский филиал РУП «Белпочта»",
+    city: "Гродно",
+    type: "Связь",
+    coords: [53.678, 23.833],
+    desc: "Тематическая экспозиция «Гродненская почта: от древних времен до современности». Знакомство с историей почтовой связи, профессией почтальона и работой современных отделений.",
+    contacts: "Уточнять через приемную Гродненского филиала или сайт belpost.by",
+    terms: "Организованные группы школьников по предварительной договоренности."
+  },
+  {
+    name: "ОАО «Гродножилстрой»",
+    city: "Гродно",
+    type: "Строительство",
+    coords: [53.65, 23.88],
+    desc: "Профориентационные экскурсии на завод крупнопанельного домостроения (КПД). Школьники видят полный производственный цикл: от арматуры и бетона до готовых строительных конструкций.",
+    contacts: "+375 (152) 62-59-77 (отдел кадров / профориентация)",
+    terms: "Старшеклассники (9–11 классы), группы по предварительной записи."
+  },
+  {
+    name: "Гродненское РУП «Фармация»",
+    city: "Гродно",
+    type: "Медицина",
+    coords: [53.677, 23.828],
+    desc: "Кабинет истории аптечного дела на Гродненщине. Профориентационный проект «Школа юного фармацевта»: знакомство с историей, изготовлением лекарств и профессиями провизора и фармацевта.",
+    contacts: "Через администрацию РУП «Фармация» или сайт farmacia.by",
+    terms: "Для организованных групп (часто 10 классы), запись заранее."
+  },
+  {
+    name: "ОАО «Гродненский стеклозавод»",
+    city: "Гродно",
+    type: "Стекольное производство",
+    coords: [53.664, 23.816],
+    desc: "Одно из старейших предприятий города. Экскурсии по производству стеклотары, знакомство с процессом выдувания стекла и работой стеклодувов.",
+    contacts: "8 (0152) 62-58-44",
+    terms: "Организованные группы школьников (профориентационные экскурсии)."
+  }
+];
+
+// ===== КАРТА =====
+const map = L.map('map').setView([53.68, 23.84], 12);// ИСПОЛЬЗУЕМ ФРАНЦУЗСКОЕ ЗЕРКАЛО, ЧТОБЫ ИЗБЕЖАТЬ БЛОКИРОВКИ
+L.tileLayer('https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png', {
+  maxZoom: 18,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const markers = [];
+
+function popupHtml(p) {
+  return `<h4>${p.name}</h4>
+    <div><b>${p.city}</b> · ${p.type}</div>
+    <p style="margin:6px 0">${p.desc}</p>
+    <div><b>Контакты:</b> ${p.contacts}</div>
+    <div style="margin-top:4px"><b>Условия:</b> ${p.terms}</div>`;
+}
+
+function renderList(filter = 'all') {
+  const list = document.getElementById('list');
+  list.innerHTML = '';
+  places
+    .filter(p => filter === 'all' || p.type === filter)
+    .forEach(p => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.innerHTML = `
+        <h3>${p.name}</h3>
+        <div class="city">${p.city} · ${p.type}</div>
+        <div class="desc">${p.desc}</div>
+        <div class="contacts"><b>Контакты:</b> ${p.contacts}</div>
+        <div class="contacts"><b>Условия:</b> ${p.terms}</div>`;
+      card.onclick = () => {
+        map.setView(p.coords, 14);
+        markers.find(m => m.place === p).marker.openPopup();
+      };
+      list.appendChild(card);
+    });
+}
+
+places.forEach(p => {
+  const marker = L.marker(p.coords).addTo(map).bindPopup(popupHtml(p));
+  marker.place = p;
+  markers.push({ marker, place: p });
+});
+
+document.getElementById('filters').addEventListener('click', e => {
+  if (e.target.tagName !== 'BUTTON') return;
+  document.querySelectorAll('#filters button').forEach(b => b.classList.remove('active'));
+  e.target.classList.add('active');
+  renderList(e.target.dataset.filter);
+});
+
+renderList();
+</script>
+</body>
+</html>
